@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { FirebaseNotificationService } from '../notification/notification.service';
+import { WalletService } from '../wallet/wallet.service';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { Networks } from '@stellar/stellar-sdk';
 
@@ -13,6 +14,7 @@ export class StellarService {
   constructor(
     private readonly redisService: RedisService,
     private readonly notificationService: FirebaseNotificationService,
+    private readonly walletService: WalletService,
   ) {
     if (process.env.ENVIRONMENT == 'dev') {
       this.network = Networks.TESTNET;
@@ -37,7 +39,10 @@ export class StellarService {
     from,
     txHash,
     type,
+    fcmToken,
   ) {
+    if (!fcmToken) return;
+
     let network = 'STR';
 
     const data: Record<string, string> = {
@@ -46,33 +51,39 @@ export class StellarService {
       type: String(type),
     };
 
-    const fcmToken: string | null = await this.redisService.hGet(
-      process.env.STELLAR_REDIS_KEY as string,
-      address,
-    );
-    if (fcmToken) {
-      const title: string = `${altText} ${parseFloat(value)} ${tokenType} `;
-      let subtitle = !from ? "XLM Account Created " : "From ";
-      const body: string = `${subtitle} ${from}`;
-      if ([title, body, data].some(v => v === null || v === undefined)) {
-        return;
-      }
-      await this.notificationService.sendNotification(fcmToken, {
-        title,
-        body,
-        data,
-      });
+    const title: string = `${altText} ${parseFloat(value)} ${tokenType} `;
+    let subtitle = !from ? "XLM Account Created " : "From ";
+    const body: string = `${subtitle} ${from}`;
+    if ([title, body, data].some(v => v === null || v === undefined)) {
+      return;
     }
+    await this.notificationService.sendNotification(fcmToken, {
+      title,
+      body,
+      data,
+    });
   }
 
   async parseStellarEffect(effect) {
-        if (
-      effect.type === 'account_created' &&
-      (await this.redisService.isKeyExist(
-        process.env.STELLAR_REDIS_KEY as string,
-        effect.account,
-      ))
-    ) {
+    const relevantTypes = ['account_created', 'account_credited', 'trade'];
+    if (!relevantTypes.includes(effect.type)) return;
+
+    // Fast O(1) membership filter in Redis — we scan EVERY effect on the whole
+    // Stellar network, so this avoids a DB query for addresses that aren't ours.
+    const isTracked = await this.redisService.isKeyExist(
+      process.env.STELLAR_REDIS_KEY as string,
+      effect.account,
+    );
+    if (!isTracked) return;
+
+    // Only for our tracked addresses, fetch the FCM token from the DB (source of truth).
+    const wallet = await this.walletService.findByXlmAddressWithDevice(
+      effect.account,
+    );
+    const fcmToken: string | undefined = (wallet as any)?.deviceId?.fcmToken;
+    if (!fcmToken) return;
+
+    if (effect.type === 'account_created') {
       const chain: string = 'XLM';
 
       this.sendNotification(
@@ -83,15 +94,10 @@ export class StellarService {
         ``,
         effect.transaction_hash,
         'trf',
+        fcmToken,
       );
     }
-    if (
-      effect.type === 'account_credited' &&
-      (await this.redisService.isKeyExist(
-        process.env.STELLAR_REDIS_KEY as string,
-        effect.account,
-      ))
-    ) {
+    if (effect.type === 'account_credited') {
       const chain: string =
         effect.asset_type === 'native' ? 'XLM' : effect.asset_code;
 
@@ -106,16 +112,11 @@ export class StellarService {
         `${effect.account.slice(0, 4)}...${effect.account.slice(-4)}`,
         effect.transaction_hash,
         'trf',
+        fcmToken,
       );
     }
 
-    if (
-      effect.type === 'trade' &&
-      (await this.redisService.isKeyExist(
-        process.env.STELLAR_REDIS_KEY as string,
-        effect.account,
-      ))
-    ) {
+    if (effect.type === 'trade') {
       const soldAsset: string =
         effect.sold_asset_type === 'native' ? 'XLM' : effect.sold_asset_code;
       const boughtAsset: string =
@@ -131,6 +132,7 @@ export class StellarService {
         `SDEX`,
         effect.transaction_hash,
         'swap',
+        fcmToken,
       );
     }
   }

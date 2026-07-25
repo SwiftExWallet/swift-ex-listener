@@ -54,6 +54,10 @@ export class WalletService {
     return this.walletRepo.findOneByMultiWithDevice(address);
   }
 
+  async findByXlmAddressWithDevice(address: string): Promise<WalletWithDevice | null> {
+    return this.walletRepo.findOneByXlmWithDevice(address);
+  }
+
   async findAllXlmWithDevice(limit: number, offset: number): Promise<WalletWithDevice[]> {
     return this.walletRepo.findAllXlmWithDevice(limit, offset);
   }

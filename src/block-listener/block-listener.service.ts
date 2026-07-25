@@ -148,11 +148,13 @@ export class BlockListenerService {
     const network = body.event.network.split('_')[0];
 
     const activities = body.event.activity || [];
+    this.logger.log(`[DIAG] ${network} activities: ${JSON.stringify(activities.map(a => ({ to: a?.toAddress, cat: a?.category, val: a?.value, asset: a?.asset })))}`);
 
     let activity: any = null;
     let fcmToken: any = "";
     for (const a of activities) {
-      if (!a?.toAddress) continue;
+      if (!a?.toAddress) { this.logger.log(`[DIAG] skip: no toAddress`); continue; }
+      if (a?.category === 'internal') { this.logger.log(`[DIAG] skip: internal ${a.toAddress}`); continue; } // simple transfers only — skip internal
       const normalizedValue =
   a.value ??
   (a.rawContract?.rawValue
@@ -160,10 +162,11 @@ export class BlockListenerService {
       10 ** (a.rawContract.decimals || 18)
     : 0);
 
-if (normalizedValue <= 0) continue;
+if (normalizedValue <= 0) { this.logger.log(`[DIAG] skip: value<=0 ${a.toAddress}`); continue; }
 
       const wallet = await this.walletService.findByMultiAddressWithDevice(a.toAddress);
       fcmToken = (wallet as any)?.deviceId?.fcmToken;
+      this.logger.log(`[DIAG] lookup ${a.toAddress} -> wallet=${!!wallet} fcmToken=${fcmToken ? 'YES' : 'NO'}`);
 
       if (fcmToken) {
         activity = { ...a, normalizedValue };
@@ -171,7 +174,7 @@ if (normalizedValue <= 0) continue;
       }
     }
 
-    if (!activity || !fcmToken) return;
+    if (!activity || !fcmToken) { this.logger.warn(`[DIAG] BAIL — no matching wallet/token for ${network}`); return; }
 
 
     const fromAddress = activity.fromAddress;
@@ -184,36 +187,9 @@ if (normalizedValue <= 0) continue;
     const value = activity.normalizedValue ?? activity.value ?? 0;
     const txHash = activity.hash;
 
-    if (activity?.category === 'internal') return;
-
-    // Layer 1 — check if toAddress is banned on this chain
-    if (await this.rateLimitService.isToAddressBanned(toAddress, network)) {
-      this.logger.warn(`Notification suppressed — ${toAddress} banned on ${network}`);
-      return;
-    }
-
-    // Layer 2 — AML: track fromAddress activity
-    const amlResult = await this.rateLimitService.trackAndCheckFromAddress(fromAddress, toAddress, network);
-    if (amlResult.flagged) {
-      // TODO: save to AML DB (commented until ready)
-      // await this.amlService.save({ fromAddress, toAddress, chain: network, flag: amlResult.flag });
-      if (amlResult.flag === AmlFlag.MALICIOUS) {
-        this.logger.warn(`AML malicious — blocking ${toAddress} on ${network}`);
-        const { webhookId, token } = this.getWebhookConfig(network);
-        if (webhookId) await this.updateWebhook({ webHookId: webhookId, apiURL: ALCHEMY_API_UPDATEHOOK }, [], [toAddress], token);
-        return;
-      }
-    }
-
-    // Layer 1 — track toAddress notification count, apply ban if needed
-    const rateLimitResult = await this.rateLimitService.trackAndCheckToAddress(toAddress, network);
-    if (rateLimitResult.banned) {
-      this.logger.warn(`Rate limit hit — removing ${toAddress} from ${network} webhook`);
-      const { webhookId, token } = this.getWebhookConfig(network);
-      if (webhookId) await this.updateWebhook({ webHookId: webhookId, apiURL: ALCHEMY_API_UPDATEHOOK }, [], [toAddress], token);
-      return;
-    }
-
+    // --- AML / rate-limit / ban layers disabled — simple transfer notifications only ---
+    // To re-enable, restore the isToAddressBanned / trackAndCheckFromAddress /
+    // trackAndCheckToAddress blocks here.
 
     this.sendNotification(
       toAddress,

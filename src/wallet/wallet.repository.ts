@@ -52,10 +52,26 @@ export class WalletRepository {
   }
 
   async findOneByMultiWithDevice(address: string): Promise<WalletWithDevice | null> {
-    return this.walletModel.findOne({ 'addresses.multi': address }).populate({
-      path: 'deviceId',
-      select: 'fcmToken',
-    }) as unknown as WalletWithDevice;
+    // EVM addresses may be stored checksummed (mixed-case) while Alchemy webhooks
+    // send them lowercase — match case-insensitively. A single address can be
+    // shared by multiple wallets/devices, so return the most recently created one.
+    const escaped = address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.walletModel
+      .findOne({
+        'addresses.multi': { $regex: `^${escaped}$`, $options: 'i' },
+        deviceId: { $ne: null },
+      })
+      .sort({ createdAt: -1 })
+      .populate({ path: 'deviceId', select: 'fcmToken' }) as unknown as WalletWithDevice;
+  }
+
+  async findOneByXlmWithDevice(address: string): Promise<WalletWithDevice | null> {
+    // A Stellar address can be shared by multiple wallets/devices — return the
+    // most recently created one so the latest device gets the notification.
+    return this.walletModel
+      .findOne({ 'addresses.xlm': address, deviceId: { $ne: null } })
+      .sort({ createdAt: -1 })
+      .populate({ path: 'deviceId', select: 'fcmToken' }) as unknown as WalletWithDevice;
   }
 
   // async migrateWalletFields(): Promise<void> {
