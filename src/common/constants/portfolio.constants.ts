@@ -9,6 +9,10 @@ export const PORTFOLIO_PAGE_CAP = 3;
 // prices don't drift forever between per-chain incremental updates.
 export const PORTFOLIO_FULL_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h
 
+// Drop dust: non-native tokens worth less than this (or with no price) are
+// discarded. Native coins are always kept (if balance > 0) regardless of value.
+export const PORTFOLIO_MIN_VALUE_USD = 0.001;
+
 // Request-side network slugs sent to Alchemy for a full sync.
 export const ALL_REQUEST_SLUGS = [
   'eth-mainnet',

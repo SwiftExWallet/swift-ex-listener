@@ -6,6 +6,7 @@ import {
   PORTFOLIO_API_BASE,
   PORTFOLIO_PAGE_CAP,
   PORTFOLIO_FULL_REFRESH_MS,
+  PORTFOLIO_MIN_VALUE_USD,
   ALL_REQUEST_SLUGS,
   NETWORK_MAP,
   NATIVE_TOKEN,
@@ -154,6 +155,15 @@ export class PortfolioService {
           ? (parseFloat(balance) * parseFloat(priceUsd)).toString()
           : null;
 
+      // Value filter: keep native coins (with a positive balance) regardless of
+      // USD value; discard non-native tokens with no price or below the dust floor.
+      if (isNative) {
+        if (!this.isPositiveHex(balanceHex)) continue;
+      } else {
+        if (valueUsd == null) continue;
+        if (parseFloat(valueUsd) < PORTFOLIO_MIN_VALUE_USD) continue;
+      }
+
       out.push({
         network: t.network,
         tokenAddress: t.tokenAddress ?? null,
@@ -168,6 +178,14 @@ export class PortfolioService {
       });
     }
     return out;
+  }
+
+  private isPositiveHex(hex: string): boolean {
+    try {
+      return BigInt(hex) > 0n;
+    } catch {
+      return false;
+    }
   }
 
   // hex wei-style balance -> human decimal string, using BigInt for precision.
