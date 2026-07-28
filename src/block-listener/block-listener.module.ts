@@ -6,10 +6,11 @@ import { RedisModule } from '../redis/redis.module';
 import { NotificationModule } from '../notification/notification.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { DeviceModule } from '../device/device.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { ListenerWebhookController } from './listener-webhook/listener-webhook.controller';
 
 @Module({
-  imports: [RedisModule, NotificationModule, WalletModule, DeviceModule],
+  imports: [RedisModule, NotificationModule, WalletModule, DeviceModule, PortfolioModule],
   providers: [BlockListenerService, RateLimitService, BanExpiryService],
   controllers: [ListenerWebhookController],
 })
