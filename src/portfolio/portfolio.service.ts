@@ -155,14 +155,12 @@ export class PortfolioService {
           ? (parseFloat(balance) * parseFloat(priceUsd)).toString()
           : null;
 
-      // Value filter: keep native coins (with a positive balance) regardless of
-      // USD value; discard non-native tokens with no price or below the dust floor.
-      if (isNative) {
-        if (!this.isPositiveHex(balanceHex)) continue;
-      } else {
-        if (valueUsd == null) continue;
-        if (parseFloat(valueUsd) < PORTFOLIO_MIN_VALUE_USD) continue;
-      }
+      // Value filter: require a positive balance, then keep. Null-price tokens
+      // are ALLOWED (Alchemy intermittently returns null for real tokens like
+      // USDC/USDT — dropping them would hide real holdings). Only priced dust
+      // below the floor is discarded.
+      if (!this.isPositiveHex(balanceHex)) continue;
+      if (!isNative && valueUsd != null && parseFloat(valueUsd) < PORTFOLIO_MIN_VALUE_USD) continue;
 
       out.push({
         network: t.network,
