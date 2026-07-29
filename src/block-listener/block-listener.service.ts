@@ -210,6 +210,8 @@ if (normalizedValue <= 0) { this.logger.log(`[DIAG] skip: value<=0 ${a.toAddress
       network,
       txHash,
       fcmToken,
+    ).catch((e) =>
+      this.logger.error(`sendNotification failed for ${toAddress}: ${e?.message ?? e}`),
     );
 
     // After notifying, refresh the on-chain portfolio for this device+address.

@@ -17,7 +17,7 @@ export class FirebaseNotificationService {
   async sendNotification(
     token: string,
     payload: NotificationDto,
-  ): Promise<string> {
+  ): Promise<string | null> {
     try {
       const { title, body, data } = payload;
       const message: any = { //admin.messaging.Message 
@@ -60,8 +60,10 @@ export class FirebaseNotificationService {
       const response = await admin.messaging().send(message);
       return response;
     } catch (error) {
+      // A failed push (e.g. stale/unregistered token) is expected and must never
+      // crash the listener or abort downstream work like portfolio sync. Log and move on.
       console.error('Error sending FCM notification:', error);
-      throw new Error('Failed to send notification');
+      return null;
     }
   }
 }
