@@ -83,10 +83,9 @@ export class Portfolio {
 
 export const PortfolioSchema = SchemaFactory.createForClass(Portfolio);
 
-// identity: one portfolio document per (device, address)
-PortfolioSchema.index({ deviceId: 1, address: 1 }, { unique: true });
-// address-scoped invalidation (e.g. from a future balance-change webhook) can't rely on the
-// compound index above since it doesn't lead with address
-PortfolioSchema.index({ address: 1 });
+// identity: ONE portfolio document per ADDRESS (device-independent). The
+// deviceId that last synced it is stored but is not part of the key — whichever
+// device's transfer triggers a sync overwrites it.
+PortfolioSchema.index({ address: 1 }, { unique: true });
 // background staleness sweep
 PortfolioSchema.index({ stale: 1, lastSyncedAt: 1 });

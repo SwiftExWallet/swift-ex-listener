@@ -14,19 +14,16 @@ export class PortfolioRepository {
     private readonly portfolioModel: Model<Portfolio>,
   ) {}
 
-  findByDeviceAndAddress(
-    deviceId: any,
-    address: string,
-  ): Promise<Portfolio | null> {
-    return this.portfolioModel.findOne({ deviceId, address }).lean() as any;
+  findByAddress(address: string): Promise<Portfolio | null> {
+    return this.portfolioModel.findOne({ address }).lean() as any;
   }
 
-  // Ensure the doc exists and mark it syncing. The (deviceId, address) equality
-  // in the filter is applied on insert, so upsert creates the record if missing.
+  // Ensure the doc exists (keyed by address) and mark it syncing. deviceId is
+  // stored/overwritten with whichever device triggered this sync.
   async markSyncing(deviceId: any, address: string): Promise<void> {
     await this.portfolioModel.updateOne(
-      { deviceId, address },
-      { $set: { syncStatus: PortfolioSyncStatus.syncing } },
+      { address },
+      { $set: { syncStatus: PortfolioSyncStatus.syncing, deviceId } },
       { upsert: true, setDefaultsOnInsert: true },
     );
   }
@@ -42,10 +39,11 @@ export class PortfolioRepository {
     },
   ): Promise<void> {
     await this.portfolioModel.updateOne(
-      { deviceId, address },
+      { address },
       {
         $set: {
           ...data,
+          deviceId,
           stale: false,
           syncStatus: PortfolioSyncStatus.idle,
           lastSyncError: null,
@@ -60,9 +58,10 @@ export class PortfolioRepository {
     error: string,
   ): Promise<void> {
     await this.portfolioModel.updateOne(
-      { deviceId, address },
+      { address },
       {
         $set: {
+          deviceId,
           syncStatus: PortfolioSyncStatus.failed,
           lastSyncError: String(error).slice(0, 300),
         },

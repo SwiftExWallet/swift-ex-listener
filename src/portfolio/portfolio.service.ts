@@ -38,7 +38,7 @@ export class PortfolioService {
       return;
     }
     const addr = String(address).toLowerCase();
-    const existing = await this.repo.findByDeviceAndAddress(deviceId, addr);
+    const existing = await this.repo.findByAddress(addr);
 
     const net = webhookNetwork ? this.mapNetwork(webhookNetwork) : null;
     const lastFull = existing?.lastFullSyncAt
