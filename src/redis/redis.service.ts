@@ -77,6 +77,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return exists ? true : false;
   }
 
+  // Atomic de-dupe claim. Sets `key` only if it's absent, with a TTL, in one
+  // round-trip (SET .. EX .. NX). Returns true the first time (claim taken),
+  // false if it was already set (i.e. a duplicate we should skip).
+  async claimOnce(key: string, ttlSeconds: number): Promise<boolean> {
+    const res = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX');
+    return res === 'OK';
+  }
+
   async hSet(key: string, map: Record<string, string>): Promise<number> {
     return this.client.hset(key, map);
   }
