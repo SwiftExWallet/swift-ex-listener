@@ -158,7 +158,10 @@ export class BlockListenerService {
     let deviceId: any = null;
     for (const a of activities) {
       if (!a?.toAddress) { this.logger.log(`[DIAG] skip: no toAddress`); continue; }
-      if (a?.category === 'internal') { this.logger.log(`[DIAG] skip: internal ${a.toAddress}`); continue; } // simple transfers only — skip internal
+      // `internal` = native currency (ETH/BNB/MATIC…) delivered by a contract —
+      // e.g. a DEX / 1inch / Uniswap swap paying the user in native coin. Keep
+      // these; the value>0 and spam filters below drop zero-value contract
+      // calls and dust, and the per-txHash de-dupe drops repeat legs.
       const normalizedValue =
   a.value ??
   (a.rawContract?.rawValue
@@ -196,6 +199,19 @@ if (normalizedValue <= 0) { this.logger.log(`[DIAG] skip: value<=0 ${a.toAddress
   : network;
     const value = activity.normalizedValue ?? activity.value ?? 0;
     const txHash = activity.hash;
+
+    // De-dupe: one on-chain tx notifies a given recipient at most once within a
+    // 2h window. A swap can surface the same settlement across multiple internal
+    // legs or repeated webhook deliveries — claim the txHash in Redis (SET NX EX)
+    // so the push (and the portfolio sync below) fire exactly once per tx.
+    if (txHash) {
+      const dedupKey = `notif:${network}:${txHash}:${String(toAddress).toLowerCase()}`;
+      const isFirst = await this.redisService.claimOnce(dedupKey, 2 * 60 * 60);
+      if (!isFirst) {
+        this.logger.log(`[DIAG] skip: duplicate tx ${txHash} -> ${toAddress}`);
+        return;
+      }
+    }
 
     // --- AML / rate-limit / ban layers disabled — simple transfer notifications only ---
     // To re-enable, restore the isToAddressBanned / trackAndCheckFromAddress /
